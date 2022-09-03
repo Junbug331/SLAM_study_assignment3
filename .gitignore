@@ -1,4 +1,6 @@
 .idea
 .vscode
+thirdparty
 build
 compile_commands.json
+*.pdf

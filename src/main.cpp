@@ -3,18 +3,21 @@
 #include <filesystem>
 #include <random>
 
-#include <utils.hpp>
+#include <spdlog/spdlog.h>
+
+#include "utils.hpp"
+
+using namespace std;
 
 namespace fs = std::filesystem;
-using namespace std;
 using Matrix34d = Eigen::Matrix<double, 3, 4>;
 
 Matrix34d calculateSVD(const Eigen::MatrixXd& input_mat, const std::vector<int> &indexes)
 {
-    size_t input_rows = indexes.size();
-    size_t rows = (input_rows << 1);
+    size_t input_rows = indexes.size(); // get number of points for RANSAC
+    size_t rows = (input_rows << 1); // number of rows in matrix for RANSAC, 2 rows per point
 
-    Eigen::MatrixXd B = Eigen::MatrixXd::Zero(rows, 12);
+    Eigen::MatrixXd B = Eigen::MatrixXd::Zero(rows, 12); // number of columns are fixed, 12.
     for (int i=0; i<input_rows; i++)
     {
         int r = indexes[i];
@@ -44,6 +47,7 @@ Matrix34d calculateSVD(const Eigen::MatrixXd& input_mat, const std::vector<int> 
 
 Matrix34d solutionRANSAC(const Eigen::MatrixXd &input_mat, int num_iter, double threshold)
 {
+    // Choosing random indexes
     std::random_device rd;
     std::mt19937 eng(rd());
     int last = input_mat.rows();
@@ -55,8 +59,9 @@ Matrix34d solutionRANSAC(const Eigen::MatrixXd &input_mat, int num_iter, double 
 
     for (int i=0; i<num_iter; i++)
     {
+        // Choose 6 random positions
         std::set<int> nums;
-        while(nums.size() < 11)
+        while(nums.size() < 6)
             nums.insert(udist(eng));
         std::vector<int> indexes(nums.begin(), nums.end());
 
@@ -67,15 +72,20 @@ Matrix34d solutionRANSAC(const Eigen::MatrixXd &input_mat, int num_iter, double 
         int inliers = 0;
         for (int r=0; r<input_mat.rows(); ++r)
         {
-            auto tmp = P_M.row(r).transpose();
-            auto ref_p = P_I.row(r).transpose();
+            auto tmp = P_M.row(r).transpose(); // 3D points
+            auto ref_p = P_I.row(r).transpose(); // Corresponding pixel positions
+
+            // Make 3D point homogeneous
             Eigen::Vector4d m;
             m << tmp.coeff(0, 0), tmp.coeff(1, 0), tmp.coeff(2, 0), 1.0;
+
+            // Count inliers
             Eigen::Vector3d p_ = C * m;
             Eigen::Vector2d p;
             double x = p_.coeff(0, 0);
             double y = p_.coeff(1, 0);
             double z = p_.coeff(2, 0);
+            
             p << x/z, y/z;
             if((ref_p - p).norm() < threshold)
                 inliers++;
@@ -88,7 +98,7 @@ Matrix34d solutionRANSAC(const Eigen::MatrixXd &input_mat, int num_iter, double 
         }
     }
 
-    cout << "best inliers count: " << best_inliers_cnt << endl;
+    spdlog::info("Best inliers count is {}", best_inliers_cnt);
 
     return ans;
 }
@@ -102,11 +112,11 @@ int main()
     fs::path output_path = dir/output_file;
 
     {
-        double thresh = 55;
+        double thresh = 45;
         Eigen::MatrixXd input_mat = readCSVFiletoEigen(input_path, true);
         Eigen::MatrixXd output_mat = readCSVFiletoEigen(output_path);
         auto[P_I, P_M] = splitInputMatrix(input_mat);
-        auto C = solutionRANSAC(input_mat, 2500, thresh); // Best threshold : 30~55
+        auto C = solutionRANSAC(input_mat, 200, thresh);
 
         int rows = P_I.rows();
 
@@ -120,7 +130,6 @@ int main()
             Eigen::Vector4d m;
             m << tmp.coeff(0, 0), tmp.coeff(1, 0), tmp.coeff(2, 0), 1.0;
 
-            // 
             Eigen::Vector3d p_ = C * m;
             Eigen::Vector2d p;
             double x = p_.coeff(0, 0);

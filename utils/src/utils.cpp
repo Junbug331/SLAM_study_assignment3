@@ -9,8 +9,6 @@
 Reference Code for loading csv data intn Eigen
 https://aleksandarhaber.com/eigen-matrix-library-c-tutorial-saving-and-loading-data-in-from-a-csv-file/
 */
-
-
 Eigen::MatrixXd readCSVFiletoEigen(const std::string& path, bool skip_first_row)
 {
     if (path.substr(path.size()-3) != "csv")
